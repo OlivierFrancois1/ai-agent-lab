@@ -1,9 +1,10 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { parseChatResult, type ChatResult } from "@/lib/chat";
 
 type AgentFormProps = {
-  onAnswer: () => void;
+  onAnswer: (result: ChatResult | null) => void;
 };
 
 export default function AgentForm({ onAnswer }: AgentFormProps) {
@@ -24,6 +25,7 @@ export default function AgentForm({ onAnswer }: AgentFormProps) {
 
     setIsLoading(true);
     setNotice("");
+    onAnswer(null);
 
     try {
       const response = await fetch("/api/chat", {
@@ -31,18 +33,19 @@ export default function AgentForm({ onAnswer }: AgentFormProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message }),
       });
-      const data: { answer?: string; error?: string } = await response.json();
+      const payload: unknown = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "The request could not be completed. Please try again.");
+        const errorMessage =
+          typeof payload === "object" && payload !== null && "error" in payload && typeof payload.error === "string"
+            ? payload.error
+            : "The request could not be completed. Please try again.";
+        throw new Error(errorMessage);
       }
 
-      if (typeof data.answer !== "string") {
-        throw new Error("The server returned an unexpected response. Please try again.");
-      }
-
-      setAnswer(data.answer);
-      onAnswer();
+      const result = parseChatResult(payload);
+      setAnswer(result.answer);
+      onAnswer(result);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Something went wrong. Please try again.");
     } finally {
@@ -98,7 +101,7 @@ export default function AgentForm({ onAnswer }: AgentFormProps) {
       {!notice && !answer && (
         <div aria-live="polite" className="mt-5 flex gap-3 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3.5 py-3 text-sm leading-5 text-slate-400">
           <span className="mt-0.5 text-emerald-300" aria-hidden="true">ⓘ</span>
-          <p>Checkpoint 1 · This is an LLM-powered app. It has no tools or actions, so it is not an AI agent yet.</p>
+          <p>Checkpoint 2 · The developer exposes one tool. The model chooses whether to request it; the application executes it and returns the result to the model.</p>
         </div>
       )}
     </section>
