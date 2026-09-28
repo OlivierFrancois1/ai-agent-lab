@@ -18,7 +18,7 @@ function getToolSections(tool: ToolExecution) {
     if (typeof tool.result === "number") {
       resultRows.push({ label: "Result", value: String(tool.result) });
     }
-  } else {
+  } else if (tool.name === "get_weather") {
     const args = tool.arguments;
     argumentRows.push({ label: "City", value: args.city });
     if (tool.result !== null && typeof tool.result === "object") {
@@ -29,6 +29,15 @@ function getToolSections(tool: ToolExecution) {
         { label: "Wind speed", value: `${weather.windSpeed} km/h` },
         { label: "Condition", value: weather.condition },
       );
+    }
+  } else {
+    argumentRows.push({ label: "Query", value: tool.arguments.query });
+    if (tool.result) {
+      resultRows.push(...tool.result.map((item, index) => ({
+        label: `${index + 1}. ${item.title}`,
+        value: item.content,
+      })));
+      if (tool.result.length === 0) resultRows.push({ label: "Matches", value: "No relevant workshop notes found." });
     }
   }
 

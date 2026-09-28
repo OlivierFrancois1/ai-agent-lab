@@ -23,8 +23,8 @@ const capabilities = [
   {
     icon: "⌕",
     title: "Knowledge",
-    description: "Search workshop knowledge and external context.",
-    connected: false,
+    description: "Retrieve relevant workshop notes at runtime.",
+    connected: true,
   },
 ];
 
@@ -57,11 +57,14 @@ export default function Home() {
               <CapabilityCard key={capability.title} {...capability} />
             ))}
           </div>
+          <p className="mt-4 text-xs leading-5 text-slate-500">
+            Retrieve → Context → Generate. Retrieved information augments the answer at runtime; it does not retrain the model.
+          </p>
         </section>
 
         <footer className="mt-10 flex flex-col gap-2 border-t border-white/[0.08] pt-5 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
           <span>AI Demo Day 1 · Building with LLMs and AI Agents</span>
-          <span>Checkpoint 4 <span aria-hidden="true">/</span> Autonomy within constraints</span>
+          <span>Checkpoint 5 <span aria-hidden="true">/</span> External knowledge</span>
         </footer>
       </div>
     </main>

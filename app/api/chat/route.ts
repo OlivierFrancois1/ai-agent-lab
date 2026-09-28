@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { calculate, parseCalculatorArguments } from "@/lib/tools/calculator";
 import { getWeather, parseWeatherArguments } from "@/lib/tools/weather";
+import { parseKnowledgeArguments, searchKnowledge } from "@/lib/tools/knowledge";
 import type { ChatResult, ToolExecution } from "@/lib/chat";
 
 const MAX_AGENT_STEPS = 5;
@@ -40,8 +41,21 @@ const weatherTool = {
   },
 };
 
-const availableTools = [calculatorTool, weatherTool];
-const instructions = "Choose calculator for arithmetic, get_weather for current weather, or answer directly when no tool is needed. After receiving tool results, decide whether another available tool is needed. The application executes tools; you do not execute code yourself.";
+const knowledgeTool = {
+  type: "function" as const,
+  name: "search_knowledge",
+  description: "Search the workshop knowledge base for information about AI agents, tools, agent safety, RAG, and hackathon project guidance.",
+  strict: true,
+  parameters: {
+    type: "object",
+    properties: { query: { type: "string" } },
+    required: ["query"],
+    additionalProperties: false,
+  },
+};
+
+const availableTools = [calculatorTool, weatherTool, knowledgeTool];
+const instructions = "Choose calculator for arithmetic, get_weather for current weather, search_knowledge for questions about workshop knowledge (AI agents, tools, safety, RAG, and project guidance), or answer directly when no tool is needed. After receiving tool results, decide whether another available tool is needed. The application executes tools; you do not execute code yourself.";
 
 async function executeToolCall(
   call: { call_id: string; name: string; arguments: string },
@@ -103,6 +117,20 @@ async function executeToolCall(
     };
   }
 
+  if (call.name === "search_knowledge") {
+    const args = parseKnowledgeArguments(argsFromModel);
+    const result = searchKnowledge(args.query);
+    const execution: ToolExecution = { step, name: "search_knowledge", arguments: args, result };
+    return {
+      execution,
+      output: {
+        type: "function_call_output",
+        call_id: call.call_id,
+        output: JSON.stringify({ results: result }),
+      },
+    };
+  }
+
   throw new Error("The model requested an unsupported tool.");
 }
 
@@ -158,7 +186,7 @@ export async function POST(request: Request) {
 
       // Validate all requested names before running any call from this model step.
       const hasUnknownTool = toolCalls.some(
-        (call) => call.name !== "calculator" && call.name !== "get_weather",
+        (call) => call.name !== "calculator" && call.name !== "get_weather" && call.name !== "search_knowledge",
       );
       if (hasUnknownTool) {
         return Response.json({ error: "The model requested an unsupported tool." }, { status: 502 });

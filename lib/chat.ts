@@ -1,5 +1,6 @@
 import type { CalculatorArguments } from "@/lib/tools/calculator";
 import type { WeatherArguments, WeatherResult } from "@/lib/tools/weather";
+import type { KnowledgeArguments, KnowledgeResult } from "@/lib/tools/knowledge";
 
 export type ToolExecution = {
   step: number;
@@ -12,6 +13,12 @@ export type ToolExecution = {
   name: "get_weather";
   arguments: WeatherArguments;
   result: WeatherResult | null;
+  error?: string;
+} | {
+  step: number;
+  name: "search_knowledge";
+  arguments: KnowledgeArguments;
+  result: KnowledgeResult[] | null;
   error?: string;
 };
 
@@ -88,6 +95,36 @@ function parseWeatherActivityArguments(value: unknown): WeatherArguments {
   return { city: value.city.trim() };
 }
 
+function parseKnowledgeActivityArguments(value: unknown): KnowledgeArguments {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("query" in value) ||
+    typeof value.query !== "string" ||
+    value.query.trim().length === 0
+  ) {
+    throw new Error("The knowledge search arguments are invalid.");
+  }
+
+  return { query: value.query.trim() };
+}
+
+function parseKnowledgeResults(value: unknown): KnowledgeResult[] {
+  if (!Array.isArray(value)) throw new Error("The knowledge search result is invalid.");
+  return value.map((item) => {
+    if (
+      typeof item !== "object" || item === null ||
+      !("id" in item) || typeof item.id !== "string" ||
+      !("title" in item) || typeof item.title !== "string" ||
+      !("content" in item) || typeof item.content !== "string" ||
+      !("score" in item) || typeof item.score !== "number" || !Number.isFinite(item.score)
+    ) {
+      throw new Error("The knowledge search returned incomplete data.");
+    }
+    return { id: item.id, title: item.title, content: item.content, score: item.score };
+  });
+}
+
 function parseToolExecution(value: unknown): ToolExecution {
   if (typeof value !== "object" || value === null) {
     throw new Error("The server returned an invalid tool result.");
@@ -113,6 +150,14 @@ function parseToolExecution(value: unknown): ToolExecution {
       return { step: tool.step, name: "get_weather", arguments: args, result: parseWeatherResult(tool.result) };
     }
     if (error) return { step: tool.step, name: "get_weather", arguments: args, result: null, error };
+  }
+
+  if (tool.name === "search_knowledge") {
+    const args = parseKnowledgeActivityArguments(tool.arguments);
+    if (Array.isArray(tool.result)) {
+      return { step: tool.step, name: "search_knowledge", arguments: args, result: parseKnowledgeResults(tool.result) };
+    }
+    if (error) return { step: tool.step, name: "search_knowledge", arguments: args, result: null, error };
   }
 
   throw new Error("The server returned an incomplete tool result.");

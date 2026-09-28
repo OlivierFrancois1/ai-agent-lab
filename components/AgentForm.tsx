@@ -60,7 +60,7 @@ export default function AgentForm({ onAnswer }: AgentFormProps) {
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-400">Your first prompt</p>
           <h2 id="ask-title" className="mt-2 text-xl font-semibold tracking-tight text-white sm:text-2xl">Ask the model something</h2>
         </div>
-        <span className="hidden rounded-lg border border-white/[0.08] px-2.5 py-1.5 font-mono text-[11px] text-slate-500 sm:inline">01 / 04</span>
+        <span className="hidden rounded-lg border border-white/[0.08] px-2.5 py-1.5 font-mono text-[11px] text-slate-500 sm:inline">01 / 05</span>
       </div>
       <form className="mt-6" onSubmit={handleSubmit}>
         <label htmlFor="agent-prompt" className="mb-2 block text-sm font-medium text-slate-300">Message</label>
@@ -101,7 +101,7 @@ export default function AgentForm({ onAnswer }: AgentFormProps) {
       {!notice && !answer && (
         <div aria-live="polite" className="mt-5 flex gap-3 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3.5 py-3 text-sm leading-5 text-slate-400">
           <span className="mt-0.5 text-emerald-300" aria-hidden="true">ⓘ</span>
-          <p>Checkpoint 4 · The model can now act, observe the result, and decide what to do next. Autonomy within constraints.</p>
+          <p>Checkpoint 5 · The agent can now retrieve information outside the model before answering. Retrieve → Context → Generate.</p>
         </div>
       )}
     </section>
