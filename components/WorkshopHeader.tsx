@@ -18,8 +18,8 @@ export default function WorkshopHeader() {
       <div className="flex w-fit items-center gap-3 rounded-2xl border border-white/[0.09] bg-slate-900/70 px-4 py-3 shadow-lg shadow-black/10">
         <span className="grid h-10 w-10 place-items-center rounded-xl bg-amber-400/10 text-amber-300" aria-hidden="true">◌</span>
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Connection</p>
-          <p className="mt-0.5 text-sm font-semibold text-slate-200">Not connected</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">LLM connection</p>
+          <p className="mt-0.5 text-sm font-semibold text-emerald-300">Connected</p>
         </div>
       </div>
     </header>
