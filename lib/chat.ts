@@ -2,11 +2,13 @@ import type { CalculatorArguments } from "@/lib/tools/calculator";
 import type { WeatherArguments, WeatherResult } from "@/lib/tools/weather";
 
 export type ToolExecution = {
+  step: number;
   name: "calculator";
   arguments: CalculatorArguments;
   result: number | null;
   error?: string;
 } | {
+  step: number;
   name: "get_weather";
   arguments: WeatherArguments;
   result: WeatherResult | null;
@@ -16,6 +18,8 @@ export type ToolExecution = {
 export type ChatResult = {
   answer: string;
   tools: ToolExecution[];
+  steps: number;
+  complete: boolean;
 };
 
 function parseWeatherResult(value: unknown): WeatherResult {
@@ -91,21 +95,24 @@ function parseToolExecution(value: unknown): ToolExecution {
 
   const tool = value as Record<string, unknown>;
   const error = typeof tool.error === "string" ? tool.error : undefined;
+  if (typeof tool.step !== "number" || !Number.isInteger(tool.step) || tool.step < 1) {
+    throw new Error("The server returned an invalid tool step.");
+  }
 
   if (tool.name === "calculator") {
     const args = parseCalculatorActivityArguments(tool.arguments);
     if (typeof tool.result === "number" && Number.isFinite(tool.result)) {
-      return { name: "calculator", arguments: args, result: tool.result };
+      return { step: tool.step, name: "calculator", arguments: args, result: tool.result };
     }
-    if (error) return { name: "calculator", arguments: args, result: null, error };
+    if (error) return { step: tool.step, name: "calculator", arguments: args, result: null, error };
   }
 
   if (tool.name === "get_weather") {
     const args = parseWeatherActivityArguments(tool.arguments);
     if (tool.result !== null && tool.result !== undefined) {
-      return { name: "get_weather", arguments: args, result: parseWeatherResult(tool.result) };
+      return { step: tool.step, name: "get_weather", arguments: args, result: parseWeatherResult(tool.result) };
     }
-    if (error) return { name: "get_weather", arguments: args, result: null, error };
+    if (error) return { step: tool.step, name: "get_weather", arguments: args, result: null, error };
   }
 
   throw new Error("The server returned an incomplete tool result.");
@@ -117,12 +124,21 @@ export function parseChatResult(value: unknown): ChatResult {
   }
 
   const result = value as Record<string, unknown>;
-  if (typeof result.answer !== "string" || !Array.isArray(result.tools)) {
-    throw new Error("The server response is missing its answer or tool activity.");
+  if (
+    typeof result.answer !== "string" ||
+    !Array.isArray(result.tools) ||
+    typeof result.steps !== "number" ||
+    !Number.isInteger(result.steps) ||
+    result.steps < 1 ||
+    typeof result.complete !== "boolean"
+  ) {
+    throw new Error("The server response is missing its answer, trace, or step count.");
   }
 
   return {
     answer: result.answer,
     tools: result.tools.map(parseToolExecution),
+    steps: result.steps,
+    complete: result.complete,
   };
 }

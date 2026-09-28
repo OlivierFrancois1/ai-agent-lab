@@ -40,6 +40,12 @@ function getToolSections(tool: ToolExecution) {
 
 export default function AgentActivity({ result }: AgentActivityProps) {
   const toolCount = result?.tools.length ?? 0;
+  const toolsByStep = new Map<number, ToolExecution[]>();
+  result?.tools.forEach((tool) => {
+    const stepTools = toolsByStep.get(tool.step) ?? [];
+    stepTools.push(tool);
+    toolsByStep.set(tool.step, stepTools);
+  });
 
   return (
     <section className="flex min-h-[350px] flex-col rounded-3xl border border-white/[0.1] bg-slate-900/55 p-5 shadow-xl shadow-black/15 sm:p-7" aria-labelledby="activity-title">
@@ -49,8 +55,8 @@ export default function AgentActivity({ result }: AgentActivityProps) {
           <h2 id="activity-title" className="mt-2 text-xl font-semibold tracking-tight text-white sm:text-2xl">Agent Activity</h2>
         </div>
         <span className="inline-flex items-center gap-2 rounded-full border border-slate-700/70 px-3 py-1.5 text-xs text-slate-400">
-          <span className={`h-1.5 w-1.5 rounded-full ${result ? "bg-emerald-400" : "bg-slate-500"}`} aria-hidden="true" />
-          {result ? "Response ready" : "Idle"}
+          <span className={`h-1.5 w-1.5 rounded-full ${result?.complete ? "bg-emerald-400" : "bg-slate-500"}`} aria-hidden="true" />
+          {result ? (result.complete ? "Response ready" : "Step limit reached") : "Idle"}
         </span>
       </div>
 
@@ -63,7 +69,7 @@ export default function AgentActivity({ result }: AgentActivityProps) {
             <p className="mt-4 text-sm font-semibold text-slate-200">Waiting for a request...</p>
             <p className="mx-auto mt-2 max-w-xs text-xs leading-5 text-slate-500">Tool activity will appear here when the model requests a tool.</p>
           </div>
-        ) : toolCount === 0 ? (
+        ) : toolCount === 0 && result.complete ? (
           <div aria-live="polite" className="relative text-center">
             <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-slate-700/80 bg-slate-900 text-slate-500" aria-hidden="true">
               <span className="text-xl">⌁</span>
@@ -73,37 +79,46 @@ export default function AgentActivity({ result }: AgentActivityProps) {
           </div>
         ) : (
           <div aria-live="polite" className="relative space-y-4">
-            {result.tools.map((tool, index) => (
-              <article key={`${tool.name}-${index}`} className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-4">
-                <h3 className="text-center text-sm font-semibold text-emerald-300">Tool used: {tool.name}</h3>
-                <div className="mx-auto mt-4 max-w-sm space-y-4">
-                  {getToolSections(tool).map((section) => (
-                    <div key={section.title}>
-                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{section.title}</p>
-                      <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-2 text-sm">
-                        {section.rows.map((row) => (
-                          <div key={row.label} className="contents">
-                            <dt className="text-slate-400">{row.label}</dt>
-                            <dd className="text-right font-mono text-slate-200">{row.value}</dd>
-                          </div>
-                        ))}
-                      </dl>
+            {[...toolsByStep.entries()].map(([step, stepTools]) => (
+              <section key={step} className="space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Step {step}</h3>
+                {stepTools.map((tool, index) => (
+                  <article key={`${tool.name}-${index}`} className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-4">
+                    <h4 className="text-center text-sm font-semibold text-emerald-300">Tool used: {tool.name}</h4>
+                    <div className="mx-auto mt-4 max-w-sm space-y-4">
+                      {getToolSections(tool).map((section) => (
+                        <div key={section.title}>
+                          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{section.title}</p>
+                          <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-2 text-sm">
+                            {section.rows.map((row) => (
+                              <div key={row.label} className="contents">
+                                <dt className="text-slate-400">{row.label}</dt>
+                                <dd className="text-right font-mono text-slate-200">{row.value}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </div>
+                      ))}
+                      {tool.error && <p className="text-sm text-amber-200">Tool error: {tool.error}</p>}
                     </div>
-                  ))}
-                  {tool.error && <p className="text-sm text-amber-200">Tool error: {tool.error}</p>}
-                </div>
-              </article>
+                  </article>
+                ))}
+              </section>
             ))}
-            <p className="mx-auto max-w-xs text-center text-xs leading-5 text-slate-500">
-              The model selected a capability defined by the developer. The application executed it and returned the result.
-            </p>
+            <div className="mx-auto max-w-xs text-center text-xs leading-5 text-slate-500">
+              {result.complete ? <p>Final answer ready. Observable tool activity is shown above.</p> : <p>The application stopped at its maximum model step count.</p>}
+            </div>
           </div>
         )}
       </div>
 
       <div className="mt-4 flex items-center gap-2 text-[11px] text-slate-500">
         <span className="font-mono text-emerald-400/80">&gt;_</span>
-        <span>{toolCount === 0 ? "0 tool calls" : `${toolCount} tool ${toolCount === 1 ? "call" : "calls"}`}</span>
+        <span>
+          {result
+            ? `${toolCount} tool ${toolCount === 1 ? "call" : "calls"} · ${result.steps} model ${result.steps === 1 ? "step" : "steps"}`
+            : "Agent activity ready"}
+        </span>
       </div>
     </section>
   );

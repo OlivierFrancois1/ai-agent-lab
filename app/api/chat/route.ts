@@ -3,6 +3,8 @@ import { calculate, parseCalculatorArguments } from "@/lib/tools/calculator";
 import { getWeather, parseWeatherArguments } from "@/lib/tools/weather";
 import type { ChatResult, ToolExecution } from "@/lib/chat";
 
+const MAX_AGENT_STEPS = 5;
+
 const calculatorTool = {
   type: "function" as const,
   name: "calculator",
@@ -39,6 +41,70 @@ const weatherTool = {
 };
 
 const availableTools = [calculatorTool, weatherTool];
+const instructions = "Choose calculator for arithmetic, get_weather for current weather, or answer directly when no tool is needed. After receiving tool results, decide whether another available tool is needed. The application executes tools; you do not execute code yourself.";
+
+async function executeToolCall(
+  call: { call_id: string; name: string; arguments: string },
+  step: number,
+): Promise<{ execution: ToolExecution; output: { type: "function_call_output"; call_id: string; output: string } }> {
+  const argsFromModel: unknown = JSON.parse(call.arguments);
+
+  if (call.name === "calculator") {
+    const args = parseCalculatorArguments(argsFromModel);
+    let execution: ToolExecution;
+
+    try {
+      const result = calculate(args);
+      execution = { step, name: "calculator", arguments: args, result };
+    } catch (error) {
+      execution = {
+        step,
+        name: "calculator",
+        arguments: args,
+        result: null,
+        error: error instanceof Error ? error.message : "The calculator could not complete this operation.",
+      };
+    }
+
+    return {
+      execution,
+      output: {
+        type: "function_call_output",
+        call_id: call.call_id,
+        output: execution.error ? JSON.stringify({ error: execution.error }) : JSON.stringify({ result: execution.result }),
+      },
+    };
+  }
+
+  if (call.name === "get_weather") {
+    const args = parseWeatherArguments(argsFromModel);
+    let execution: ToolExecution;
+
+    try {
+      const result = await getWeather(args);
+      execution = { step, name: "get_weather", arguments: args, result };
+    } catch (error) {
+      execution = {
+        step,
+        name: "get_weather",
+        arguments: args,
+        result: null,
+        error: error instanceof Error ? error.message : "The weather lookup could not be completed.",
+      };
+    }
+
+    return {
+      execution,
+      output: {
+        type: "function_call_output",
+        call_id: call.call_id,
+        output: execution.error ? JSON.stringify({ error: execution.error }) : JSON.stringify({ result: execution.result }),
+      },
+    };
+  }
+
+  throw new Error("The model requested an unsupported tool.");
+}
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -66,83 +132,70 @@ export async function POST(request: Request) {
 
   try {
     const client = new OpenAI({ apiKey });
-    const response = await client.responses.create({
+    let response = await client.responses.create({
       model: "gpt-4.1-mini",
       input: body.message.trim(),
-      instructions: "Choose the calculator for arithmetic, get_weather for a current city weather question, or answer directly without a tool when neither capability is needed. The application executes requested tools and returns their results.",
+      instructions,
       tools: availableTools,
       tool_choice: "auto",
-      parallel_tool_calls: false,
+      parallel_tool_calls: true,
     });
 
-    const toolCalls = response.output.filter((item) => item.type === "function_call");
-    if (toolCalls.length === 0) {
-      const result: ChatResult = { answer: response.output_text, tools: [] };
-      return Response.json(result);
-    }
+    const tools: ToolExecution[] = [];
 
-    // Keep this checkpoint to one tool round. The model is configured for one call;
-    // this guard handles an unexpected multi-call response without executing it.
-    if (toolCalls.length > 1) {
-      return Response.json({ error: "The model requested more than one tool at a time. Please try one request at a time." }, { status: 502 });
-    }
+    for (let step = 1; step <= MAX_AGENT_STEPS; step += 1) {
+      const toolCalls = response.output.filter((item) => item.type === "function_call");
 
-    const toolCall = toolCalls[0];
-    const parsedArguments: unknown = JSON.parse(toolCall.arguments);
-    let execution: ToolExecution;
-
-    if (toolCall.name === "calculator") {
-      const args = parseCalculatorArguments(parsedArguments);
-      try {
-        const value = calculate(args);
-        execution = { name: "calculator", arguments: args, result: value };
-      } catch (error) {
-        execution = {
-          name: "calculator",
-          arguments: args,
-          result: null,
-          error: error instanceof Error ? error.message : "The calculator could not complete this operation.",
+      if (toolCalls.length === 0) {
+        const result: ChatResult = {
+          answer: response.output_text,
+          tools,
+          steps: step,
+          complete: true,
         };
+        return Response.json(result);
       }
-    } else if (toolCall.name === "get_weather") {
-      const args = parseWeatherArguments(parsedArguments);
-      try {
-        const value = await getWeather(args);
-        execution = { name: "get_weather", arguments: args, result: value };
-      } catch (error) {
-        execution = {
-          name: "get_weather",
-          arguments: args,
-          result: null,
-          error: error instanceof Error ? error.message : "The weather lookup could not be completed.",
+
+      // Validate all requested names before running any call from this model step.
+      const hasUnknownTool = toolCalls.some(
+        (call) => call.name !== "calculator" && call.name !== "get_weather",
+      );
+      if (hasUnknownTool) {
+        return Response.json({ error: "The model requested an unsupported tool." }, { status: 502 });
+      }
+
+      // A final model turn is needed to produce the answer, so do not execute
+      // additional tools once the model has used its full step budget.
+      if (step === MAX_AGENT_STEPS) {
+        const result: ChatResult = {
+          answer: `The agent reached its limit of ${MAX_AGENT_STEPS} model steps before finishing. Please try a shorter request.`,
+          tools,
+          steps: step,
+          complete: false,
         };
+        return Response.json(result);
       }
-    } else {
-      return Response.json({ error: "The model requested an unsupported tool." }, { status: 502 });
+
+      const outputs: Array<{ type: "function_call_output"; call_id: string; output: string }> = [];
+      for (const call of toolCalls) {
+        const { execution, output } = await executeToolCall(call, step);
+        tools.push(execution);
+        outputs.push(output);
+      }
+
+      response = await client.responses.create({
+        model: "gpt-4.1-mini",
+        previous_response_id: response.id,
+        input: outputs,
+        instructions,
+        tools: availableTools,
+        tool_choice: "auto",
+        parallel_tool_calls: true,
+      });
     }
 
-    const toolOutput = execution.error
-      ? JSON.stringify({ error: execution.error })
-      : JSON.stringify({ result: execution.result });
-
-    const finalResponse = await client.responses.create({
-      model: "gpt-4.1-mini",
-      previous_response_id: response.id,
-      input: [{
-        type: "function_call_output",
-        call_id: toolCall.call_id,
-        output: toolOutput,
-      }],
-      instructions: "Use the tool result provided by the application to answer the user. If a tool returned an error, explain it clearly. Do not claim to have used any other tools.",
-      tools: availableTools,
-      tool_choice: "none",
-    });
-
-    const result: ChatResult = {
-      answer: finalResponse.output_text,
-      tools: [execution],
-    };
-    return Response.json(result);
+    // The loop always returns an answer or the controlled limit response above.
+    return Response.json({ error: "The agent stopped before producing a response." }, { status: 502 });
   } catch {
     return Response.json({ error: "The LLM request could not be completed. Please try again." }, { status: 502 });
   }
