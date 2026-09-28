@@ -1,11 +1,45 @@
-import type { ChatResult } from "@/lib/chat";
+import type { ChatResult, ToolExecution } from "@/lib/chat";
 
 type AgentActivityProps = {
   result: ChatResult | null;
 };
 
+function getToolSections(tool: ToolExecution) {
+  const argumentRows: Array<{ label: string; value: string }> = [];
+  const resultRows: Array<{ label: string; value: string }> = [];
+
+  if (tool.name === "calculator") {
+    const args = tool.arguments;
+    argumentRows.push(
+      { label: "Operation", value: args.operation },
+      { label: "a", value: String(args.a) },
+      { label: "b", value: String(args.b) },
+    );
+    if (typeof tool.result === "number") {
+      resultRows.push({ label: "Result", value: String(tool.result) });
+    }
+  } else {
+    const args = tool.arguments;
+    argumentRows.push({ label: "City", value: args.city });
+    if (tool.result !== null && typeof tool.result === "object") {
+      const weather = tool.result;
+      resultRows.push(
+        { label: "City", value: weather.city },
+        { label: "Temperature", value: `${weather.temperature} ${weather.temperatureUnit}` },
+        { label: "Wind speed", value: `${weather.windSpeed} km/h` },
+        { label: "Condition", value: weather.condition },
+      );
+    }
+  }
+
+  return [
+    { title: "Arguments", rows: argumentRows },
+    ...(resultRows.length ? [{ title: "Result", rows: resultRows }] : []),
+  ];
+}
+
 export default function AgentActivity({ result }: AgentActivityProps) {
-  const calculatorWasUsed = result?.toolUsed === "calculator";
+  const toolCount = result?.tools.length ?? 0;
 
   return (
     <section className="flex min-h-[350px] flex-col rounded-3xl border border-white/[0.1] bg-slate-900/55 p-5 shadow-xl shadow-black/15 sm:p-7" aria-labelledby="activity-title">
@@ -19,47 +53,57 @@ export default function AgentActivity({ result }: AgentActivityProps) {
           {result ? "Response ready" : "Idle"}
         </span>
       </div>
+
       <div className="relative mt-6 flex flex-1 flex-col justify-center overflow-hidden rounded-2xl border border-dashed border-slate-700/80 bg-[#0b1422]/70 px-5 py-8">
-        {calculatorWasUsed ? (
-          <div aria-live="polite" className="relative">
-            <p className="text-center text-sm font-semibold text-emerald-300">Tool used: calculator</p>
-            <dl className="mx-auto mt-5 grid max-w-xs grid-cols-[1fr_auto] gap-x-6 gap-y-3 rounded-xl border border-white/[0.07] bg-white/[0.025] p-4 text-sm">
-              <dt className="text-slate-400">Operation</dt>
-              <dd className="text-right font-mono text-slate-200">{result.toolArguments?.operation}</dd>
-              <dt className="text-slate-400">a</dt>
-              <dd className="text-right font-mono text-slate-200">{result.toolArguments?.a}</dd>
-              <dt className="text-slate-400">b</dt>
-              <dd className="text-right font-mono text-slate-200">{result.toolArguments?.b}</dd>
-              <dt className="border-t border-white/[0.08] pt-3 font-medium text-slate-300">Result</dt>
-              <dd className="border-t border-white/[0.08] pt-3 text-right font-mono font-semibold text-emerald-300">
-                {result.toolError ? result.toolError : result.toolResult}
-              </dd>
-            </dl>
-            <p className="mx-auto mt-4 max-w-xs text-center text-xs leading-5 text-slate-500">
-              The model requested the tool. The application ran it and sent the result back to the model.
-            </p>
-          </div>
-        ) : result ? (
-          <div aria-live="polite" className="relative text-center">
-            <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-slate-700/80 bg-slate-900 text-slate-500" aria-hidden="true">
-              <span className="text-xl">⌁</span>
-            </div>
-            <p className="mt-4 text-sm font-semibold text-slate-200">No tools used</p>
-            <p className="mx-auto mt-2 max-w-xs text-xs leading-5 text-slate-500">This is a direct LLM response. The model answered without requesting the calculator.</p>
-          </div>
-        ) : (
+        {!result ? (
           <div className="relative text-center">
             <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-slate-700/80 bg-slate-900 text-slate-500" aria-hidden="true">
               <span className="text-xl">⌁</span>
             </div>
             <p className="mt-4 text-sm font-semibold text-slate-200">Waiting for a request...</p>
-            <p className="mx-auto mt-2 max-w-xs text-xs leading-5 text-slate-500">The model can answer directly or request the calculator. The application executes that function.</p>
+            <p className="mx-auto mt-2 max-w-xs text-xs leading-5 text-slate-500">Tool activity will appear here when the model requests a tool.</p>
+          </div>
+        ) : toolCount === 0 ? (
+          <div aria-live="polite" className="relative text-center">
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-slate-700/80 bg-slate-900 text-slate-500" aria-hidden="true">
+              <span className="text-xl">⌁</span>
+            </div>
+            <p className="mt-4 text-sm font-semibold text-slate-200">No tools used</p>
+            <p className="mx-auto mt-2 max-w-xs text-xs leading-5 text-slate-500">This was a direct LLM response.</p>
+          </div>
+        ) : (
+          <div aria-live="polite" className="relative space-y-4">
+            {result.tools.map((tool, index) => (
+              <article key={`${tool.name}-${index}`} className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-4">
+                <h3 className="text-center text-sm font-semibold text-emerald-300">Tool used: {tool.name}</h3>
+                <div className="mx-auto mt-4 max-w-sm space-y-4">
+                  {getToolSections(tool).map((section) => (
+                    <div key={section.title}>
+                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{section.title}</p>
+                      <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-2 text-sm">
+                        {section.rows.map((row) => (
+                          <div key={row.label} className="contents">
+                            <dt className="text-slate-400">{row.label}</dt>
+                            <dd className="text-right font-mono text-slate-200">{row.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                  ))}
+                  {tool.error && <p className="text-sm text-amber-200">Tool error: {tool.error}</p>}
+                </div>
+              </article>
+            ))}
+            <p className="mx-auto max-w-xs text-center text-xs leading-5 text-slate-500">
+              The model selected a capability defined by the developer. The application executed it and returned the result.
+            </p>
           </div>
         )}
       </div>
+
       <div className="mt-4 flex items-center gap-2 text-[11px] text-slate-500">
         <span className="font-mono text-emerald-400/80">&gt;_</span>
-        <span>{calculatorWasUsed ? "Calculator executed · one tool call" : result ? "Direct response · 0 tool calls" : "One tool available · no agent loop"}</span>
+        <span>{toolCount === 0 ? "0 tool calls" : `${toolCount} tool ${toolCount === 1 ? "call" : "calls"}`}</span>
       </div>
     </section>
   );

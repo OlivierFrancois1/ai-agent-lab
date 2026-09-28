@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { calculate, parseCalculatorArguments } from "@/lib/tools/calculator";
-import type { ChatResult } from "@/lib/chat";
+import { getWeather, parseWeatherArguments } from "@/lib/tools/weather";
+import type { ChatResult, ToolExecution } from "@/lib/chat";
 
 const calculatorTool = {
   type: "function" as const,
@@ -21,6 +22,23 @@ const calculatorTool = {
     additionalProperties: false,
   },
 };
+
+const weatherTool = {
+  type: "function" as const,
+  name: "get_weather",
+  description: "Get the current weather for a city.",
+  strict: true,
+  parameters: {
+    type: "object",
+    properties: {
+      city: { type: "string" },
+    },
+    required: ["city"],
+    additionalProperties: false,
+  },
+};
+
+const availableTools = [calculatorTool, weatherTool];
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -51,35 +69,61 @@ export async function POST(request: Request) {
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
       input: body.message.trim(),
-      instructions: "You may request the calculator tool when a question needs arithmetic. The application executes the tool and returns its result. For other questions, answer directly.",
-      tools: [calculatorTool],
+      instructions: "Choose the calculator for arithmetic, get_weather for a current city weather question, or answer directly without a tool when neither capability is needed. The application executes requested tools and returns their results.",
+      tools: availableTools,
       tool_choice: "auto",
       parallel_tool_calls: false,
     });
 
-    const toolCall = response.output.find((item) => item.type === "function_call");
-    if (!toolCall) {
-      const result: ChatResult = { answer: response.output_text, toolUsed: null };
+    const toolCalls = response.output.filter((item) => item.type === "function_call");
+    if (toolCalls.length === 0) {
+      const result: ChatResult = { answer: response.output_text, tools: [] };
       return Response.json(result);
     }
 
-    if (toolCall.name !== "calculator") {
+    // Keep this checkpoint to one tool round. The model is configured for one call;
+    // this guard handles an unexpected multi-call response without executing it.
+    if (toolCalls.length > 1) {
+      return Response.json({ error: "The model requested more than one tool at a time. Please try one request at a time." }, { status: 502 });
+    }
+
+    const toolCall = toolCalls[0];
+    const parsedArguments: unknown = JSON.parse(toolCall.arguments);
+    let execution: ToolExecution;
+
+    if (toolCall.name === "calculator") {
+      const args = parseCalculatorArguments(parsedArguments);
+      try {
+        const value = calculate(args);
+        execution = { name: "calculator", arguments: args, result: value };
+      } catch (error) {
+        execution = {
+          name: "calculator",
+          arguments: args,
+          result: null,
+          error: error instanceof Error ? error.message : "The calculator could not complete this operation.",
+        };
+      }
+    } else if (toolCall.name === "get_weather") {
+      const args = parseWeatherArguments(parsedArguments);
+      try {
+        const value = await getWeather(args);
+        execution = { name: "get_weather", arguments: args, result: value };
+      } catch (error) {
+        execution = {
+          name: "get_weather",
+          arguments: args,
+          result: null,
+          error: error instanceof Error ? error.message : "The weather lookup could not be completed.",
+        };
+      }
+    } else {
       return Response.json({ error: "The model requested an unsupported tool." }, { status: 502 });
     }
 
-    const args = parseCalculatorArguments(JSON.parse(toolCall.arguments) as unknown);
-    let toolResult: number | undefined;
-    let toolError: string | undefined;
-
-    try {
-      toolResult = calculate(args);
-    } catch (error) {
-      toolError = error instanceof Error ? error.message : "The calculator could not complete this operation.";
-    }
-
-    const toolOutput = toolError
-      ? JSON.stringify({ error: toolError })
-      : JSON.stringify({ result: toolResult });
+    const toolOutput = execution.error
+      ? JSON.stringify({ error: execution.error })
+      : JSON.stringify({ result: execution.result });
 
     const finalResponse = await client.responses.create({
       model: "gpt-4.1-mini",
@@ -89,16 +133,14 @@ export async function POST(request: Request) {
         call_id: toolCall.call_id,
         output: toolOutput,
       }],
-      instructions: "Use the calculator result provided by the application to answer the user. If the tool returned an error, explain it clearly. Do not claim to have used any other tools.",
-      tools: [calculatorTool],
+      instructions: "Use the tool result provided by the application to answer the user. If a tool returned an error, explain it clearly. Do not claim to have used any other tools.",
+      tools: availableTools,
       tool_choice: "none",
     });
 
     const result: ChatResult = {
       answer: finalResponse.output_text,
-      toolUsed: "calculator",
-      toolArguments: args,
-      ...(toolResult === undefined ? { toolError } : { toolResult }),
+      tools: [execution],
     };
     return Response.json(result);
   } catch {

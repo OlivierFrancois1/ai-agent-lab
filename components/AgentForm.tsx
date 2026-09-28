@@ -101,7 +101,7 @@ export default function AgentForm({ onAnswer }: AgentFormProps) {
       {!notice && !answer && (
         <div aria-live="polite" className="mt-5 flex gap-3 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3.5 py-3 text-sm leading-5 text-slate-400">
           <span className="mt-0.5 text-emerald-300" aria-hidden="true">ⓘ</span>
-          <p>Checkpoint 2 · The developer exposes one tool. The model chooses whether to request it; the application executes it and returns the result to the model.</p>
+          <p>Checkpoint 3 · The developer defines the available capabilities. The model selects the relevant one; the application executes it and returns the result.</p>
         </div>
       )}
     </section>

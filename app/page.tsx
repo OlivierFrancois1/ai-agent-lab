@@ -18,7 +18,7 @@ const capabilities = [
     icon: "◉",
     title: "Weather",
     description: "Retrieve current weather information.",
-    connected: false,
+    connected: true,
   },
   {
     icon: "⌕",
@@ -50,7 +50,7 @@ export default function Home() {
                 Available capabilities
               </h2>
             </div>
-            <p className="text-sm text-slate-400">We’ll activate these step by step.</p>
+            <p className="text-sm text-slate-400">The model can select from connected tools.</p>
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             {capabilities.map((capability) => (
@@ -61,7 +61,7 @@ export default function Home() {
 
         <footer className="mt-10 flex flex-col gap-2 border-t border-white/[0.08] pt-5 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
           <span>AI Demo Day 1 · Building with LLMs and AI Agents</span>
-          <span>Checkpoint 2 <span aria-hidden="true">/</span> One controlled tool available</span>
+          <span>Checkpoint 3 <span aria-hidden="true">/</span> Model selects between tools</span>
         </footer>
       </div>
     </main>
