@@ -56,8 +56,7 @@ const knowledgeTool = {
 };
 
 const availableTools = [calculatorTool, weatherTool, knowledgeTool];
-const instructions = "Choose calculator for arithmetic, get_weather for current weather, search_knowledge for questions about workshop knowledge (AI agents, tools, safety, RAG, and project guidance), or answer directly when no tool is needed. After receiving tool results, decide whether another available tool is needed. The application executes tools; you do not execute code yourself.";
-
+const instructions = "Choose calculator for arithmetic, get_weather for current weather, search_knowledge for questions about workshop knowledge (AI agents, tools, safety, RAG, and project guidance), or answer directly when no tool is needed. After receiving tool results, decide whether another available tool is needed. The application executes tools; you do not execute code yourself. Only call get_weather when the user names a specific city. If no city is given or it is ambiguous, ask which city instead of guessing. If a tool returns an error, say so honestly.";
 async function executeToolCall(
   call: { call_id: string; name: string; arguments: string },
   step: number,
@@ -167,7 +166,7 @@ export async function POST(request: Request) {
       instructions,
       tools: availableTools,
       tool_choice: "auto",
-      parallel_tool_calls: true,
+           parallel_tool_calls: false,
     });
 
     const tools: ToolExecution[] = [];
@@ -219,7 +218,7 @@ export async function POST(request: Request) {
         instructions,
         tools: availableTools,
         tool_choice: "auto",
-        parallel_tool_calls: true,
+               parallel_tool_calls: false,
       });
     }
 
