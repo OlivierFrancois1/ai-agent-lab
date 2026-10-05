@@ -29,7 +29,8 @@ const calculatorTool = {
 const weatherTool = {
   type: "function" as const,
   name: "get_weather",
-  description: "Get the current weather for a city.",
+   // Only use this tool when the user names a real, specific city
+   description: "Get current weather only for one specific city explicitly named by the user. If no city or an ambiguous location is given, ask for clarification instead of calling this tool.",
   strict: true,
   parameters: {
     type: "object",
