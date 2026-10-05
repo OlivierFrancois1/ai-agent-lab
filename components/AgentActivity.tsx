@@ -1,12 +1,32 @@
+import type { ReactNode } from "react";
+import { AlertIcon, BookOpenIcon, CalculatorIcon, CheckIcon, CloudSunIcon, LoaderIcon, SparklesIcon, UserIcon } from "@/components/Icons";
 import type { ChatResult, ToolExecution } from "@/lib/chat";
 
 type AgentActivityProps = {
   result: ChatResult | null;
+  isLoading?: boolean;
+};
+
+type Row = { label: string; value: string };
+
+type TimelineEntry = {
+  key: string;
+  icon: ReactNode;
+  title: string;
+  meta?: string;
+  tone?: "default" | "active" | "done" | "warn";
+  children?: ReactNode;
+};
+
+const toolDetails: Record<ToolExecution["name"], { label: string; icon: ReactNode }> = {
+  calculator: { label: "Calculator", icon: <CalculatorIcon /> },
+  get_weather: { label: "Weather", icon: <CloudSunIcon /> },
+  search_knowledge: { label: "Knowledge search", icon: <BookOpenIcon /> },
 };
 
 function getToolSections(tool: ToolExecution) {
-  const argumentRows: Array<{ label: string; value: string }> = [];
-  const resultRows: Array<{ label: string; value: string }> = [];
+  const argumentRows: Row[] = [];
+  const resultRows: Row[] = [];
 
   if (tool.name === "calculator") {
     const args = tool.arguments;
@@ -41,93 +61,163 @@ function getToolSections(tool: ToolExecution) {
     }
   }
 
-  return [
-    { title: "Arguments", rows: argumentRows },
-    ...(resultRows.length ? [{ title: "Result", rows: resultRows }] : []),
-  ];
+  return { argumentRows, resultRows };
 }
 
-export default function AgentActivity({ result }: AgentActivityProps) {
+function Rows({ rows, stacked }: { rows: Row[]; stacked?: boolean }) {
+  return (
+    <dl className="space-y-1.5 text-[13px]">
+      {rows.map((row) => (
+        <div key={row.label} className={stacked ? "" : "flex items-baseline justify-between gap-4"}>
+          <dt className={stacked ? "font-medium text-foreground" : "shrink-0 text-secondary"}>{row.label}</dt>
+          <dd className={stacked ? "mt-0.5 leading-5 text-secondary" : "min-w-0 break-words text-right font-mono text-foreground"}>{row.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function buildTimeline(result: ChatResult): TimelineEntry[] {
+  const entries: TimelineEntry[] = [
+    { key: "request", icon: <UserIcon />, title: "Request received", meta: "Your prompt was sent to the model", tone: "done" },
+  ];
+
+  for (let step = 1; step <= result.steps; step += 1) {
+    const stepTools = result.tools.filter((tool) => tool.step === step);
+    const isLast = step === result.steps;
+    entries.push({
+      key: `step-${step}`,
+      icon: <SparklesIcon />,
+      title: `Model step ${step}`,
+      meta: stepTools.length
+        ? `Decided to use ${stepTools.length} ${stepTools.length === 1 ? "tool" : "tools"}`
+        : isLast && result.complete
+          ? result.tools.length === 0 ? "No tools used — this was a direct LLM response" : "Wrote the final answer"
+          : "Continued reasoning",
+      tone: "done",
+    });
+
+    stepTools.forEach((tool, index) => {
+      const { label, icon } = toolDetails[tool.name];
+      const { argumentRows, resultRows } = getToolSections(tool);
+      entries.push({
+        key: `tool-${step}-${index}`,
+        icon,
+        title: `Called ${label}`,
+        meta: `Tool used: ${tool.name}`,
+        tone: tool.error ? "warn" : "done",
+        children: (
+          <div className="mt-3 space-y-3 rounded-xl border border-line/80 bg-surface p-3.5">
+            <div>
+              <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">Arguments</p>
+              <Rows rows={argumentRows} />
+            </div>
+            {resultRows.length > 0 && (
+              <div className="border-t border-line/80 pt-3">
+                <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">Result</p>
+                <Rows rows={resultRows} stacked={tool.name === "search_knowledge"} />
+              </div>
+            )}
+            {tool.error && (
+              <p className="flex gap-2 border-t border-line/80 pt-3 text-[13px] leading-5 text-amber-800">
+                <AlertIcon className="mt-0.5 shrink-0" />
+                Tool error: {tool.error}
+              </p>
+            )}
+          </div>
+        ),
+      });
+    });
+  }
+
+  entries.push(
+    result.complete
+      ? { key: "final", icon: <CheckIcon />, title: "Final response", meta: "Final answer ready", tone: "done" }
+      : { key: "final", icon: <AlertIcon />, title: "Step limit reached", meta: "The application stopped at its maximum model step count.", tone: "warn" },
+  );
+
+  return entries;
+}
+
+const markerTone = {
+  default: "border-line bg-white text-secondary",
+  active: "border-blue-200 bg-blue-50 text-accent",
+  done: "border-line bg-white text-slate-700",
+  warn: "border-amber-200 bg-amber-50 text-amber-700",
+};
+
+function Timeline({ entries }: { entries: TimelineEntry[] }) {
+  return (
+    <ol className="relative">
+      {entries.map((entry, index) => (
+        <li key={entry.key} className="relative flex gap-3.5 pb-6 last:pb-0">
+          {index < entries.length - 1 && (
+            <span className="absolute top-8 bottom-0 left-[15px] w-px bg-line" aria-hidden="true" />
+          )}
+          <span className={`relative grid h-8 w-8 shrink-0 place-items-center rounded-full border text-sm ${markerTone[entry.tone ?? "default"]}`}>
+            {entry.icon}
+          </span>
+          <div className="min-w-0 flex-1 pt-1">
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-[11px] text-muted">{String(index + 1).padStart(2, "0")}</span>
+              <h3 className="text-sm font-medium text-foreground">{entry.title}</h3>
+            </div>
+            {entry.meta && <p className="mt-0.5 text-[13px] leading-5 text-secondary">{entry.meta}</p>}
+            {entry.children}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export default function AgentActivity({ result, isLoading = false }: AgentActivityProps) {
   const toolCount = result?.tools.length ?? 0;
-  const toolsByStep = new Map<number, ToolExecution[]>();
-  result?.tools.forEach((tool) => {
-    const stepTools = toolsByStep.get(tool.step) ?? [];
-    stepTools.push(tool);
-    toolsByStep.set(tool.step, stepTools);
-  });
+  const status = isLoading ? "Running" : result ? (result.complete ? "Response ready" : "Step limit reached") : "Idle";
+  const statusDot = isLoading ? "bg-blue-500 animate-pulse" : result ? (result.complete ? "bg-emerald-500" : "bg-amber-500") : "bg-slate-300";
 
   return (
-    <section className="flex min-h-[350px] flex-col rounded-3xl border border-white/[0.1] bg-slate-900/55 p-5 shadow-xl shadow-black/15 sm:p-7" aria-labelledby="activity-title">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Live workspace</p>
-          <h2 id="activity-title" className="mt-2 text-xl font-semibold tracking-tight text-white sm:text-2xl">Agent Activity</h2>
-        </div>
-        <span className="inline-flex items-center gap-2 rounded-full border border-slate-700/70 px-3 py-1.5 text-xs text-slate-400">
-          <span className={`h-1.5 w-1.5 rounded-full ${result?.complete ? "bg-emerald-400" : "bg-slate-500"}`} aria-hidden="true" />
-          {result ? (result.complete ? "Response ready" : "Step limit reached") : "Idle"}
+    <section aria-labelledby="activity-title" className="min-w-0">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="activity-title" className="text-sm font-semibold text-foreground">Agent activity</h2>
+        <span className="inline-flex items-center gap-1.5 text-xs text-secondary">
+          <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} aria-hidden="true" />
+          {status}
         </span>
       </div>
 
-      <div className="relative mt-6 flex flex-1 flex-col justify-center overflow-hidden rounded-2xl border border-dashed border-slate-700/80 bg-[#0b1422]/70 px-5 py-8">
-        {!result ? (
-          <div className="relative text-center">
-            <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-slate-700/80 bg-slate-900 text-slate-500" aria-hidden="true">
-              <span className="text-xl">⌁</span>
-            </div>
-            <p className="mt-4 text-sm font-semibold text-slate-200">Waiting for a request...</p>
-            <p className="mx-auto mt-2 max-w-xs text-xs leading-5 text-slate-500">Tool activity will appear here when the model requests a tool.</p>
-          </div>
-        ) : toolCount === 0 && result.complete ? (
-          <div aria-live="polite" className="relative text-center">
-            <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-slate-700/80 bg-slate-900 text-slate-500" aria-hidden="true">
-              <span className="text-xl">⌁</span>
-            </div>
-            <p className="mt-4 text-sm font-semibold text-slate-200">No tools used</p>
-            <p className="mx-auto mt-2 max-w-xs text-xs leading-5 text-slate-500">This was a direct LLM response.</p>
-          </div>
-        ) : (
-          <div aria-live="polite" className="relative space-y-4">
-            {[...toolsByStep.entries()].map(([step, stepTools]) => (
-              <section key={step} className="space-y-3">
-                <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Step {step}</h3>
-                {stepTools.map((tool, index) => (
-                  <article key={`${tool.name}-${index}`} className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-4">
-                    <h4 className="text-center text-sm font-semibold text-emerald-300">Tool used: {tool.name}</h4>
-                    <div className="mx-auto mt-4 max-w-sm space-y-4">
-                      {getToolSections(tool).map((section) => (
-                        <div key={section.title}>
-                          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{section.title}</p>
-                          <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-2 text-sm">
-                            {section.rows.map((row) => (
-                              <div key={row.label} className="contents">
-                                <dt className="text-slate-400">{row.label}</dt>
-                                <dd className="text-right font-mono text-slate-200">{row.value}</dd>
-                              </div>
-                            ))}
-                          </dl>
-                        </div>
-                      ))}
-                      {tool.error && <p className="text-sm text-amber-200">Tool error: {tool.error}</p>}
-                    </div>
-                  </article>
+      <div className="mt-4 rounded-2xl border border-line/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-6">
+        <div aria-live="polite">
+          {isLoading ? (
+            <Timeline
+              entries={[
+                { key: "request", icon: <UserIcon />, title: "Request received", meta: "Your prompt was sent to the model", tone: "done" },
+                { key: "running", icon: <LoaderIcon className="animate-spin" />, title: "Model is working", meta: "Deciding whether to answer directly or use a tool…", tone: "active" },
+              ]}
+            />
+          ) : result ? (
+            <Timeline entries={buildTimeline(result)} />
+          ) : (
+            <div className="py-6 text-center">
+              <ol className="mx-auto inline-flex flex-col gap-2 text-left text-[13px] text-secondary">
+                {["Your prompt", "Model decides", "Tool runs (if needed)", "Final answer"].map((label, index) => (
+                  <li key={label} className="flex items-center gap-2.5">
+                    <span className="grid h-5 w-5 place-items-center rounded-full border border-line font-mono text-[10px] text-muted">{index + 1}</span>
+                    {label}
+                  </li>
                 ))}
-              </section>
-            ))}
-            <div className="mx-auto max-w-xs text-center text-xs leading-5 text-slate-500">
-              {result.complete ? <p>Final answer ready. Observable tool activity is shown above.</p> : <p>The application stopped at its maximum model step count.</p>}
+              </ol>
+              <p className="mt-5 text-sm font-medium text-foreground">Waiting for a request...</p>
+              <p className="mx-auto mt-1 max-w-xs text-[13px] leading-5 text-secondary">Tool activity will appear here when the model requests a tool.</p>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
 
-      <div className="mt-4 flex items-center gap-2 text-[11px] text-slate-500">
-        <span className="font-mono text-emerald-400/80">&gt;_</span>
-        <span>
+        <p className="mt-6 border-t border-line/80 pt-4 font-mono text-[11px] text-muted">
           {result
             ? `${toolCount} tool ${toolCount === 1 ? "call" : "calls"} · ${result.steps} model ${result.steps === 1 ? "step" : "steps"}`
             : "Agent activity ready"}
-        </span>
+        </p>
       </div>
     </section>
   );

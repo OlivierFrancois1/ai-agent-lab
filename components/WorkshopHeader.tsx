@@ -1,25 +1,24 @@
+import { SparklesIcon } from "@/components/Icons";
+
 export default function WorkshopHeader() {
   return (
-    <header className="flex flex-col gap-8 border-b border-white/[0.08] pb-8 sm:flex-row sm:items-start sm:justify-between sm:pb-10">
-      <div>
-        <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/[0.07] px-3 py-1.5 text-[11px] font-bold tracking-[0.18em] text-emerald-300">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
-          AI DEMO DAY
+    <header className="border-b border-line/80">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] bg-foreground text-[15px] text-white">
+            <SparklesIcon />
+          </span>
+          <div className="min-w-0 leading-tight">
+            <p className="truncate text-sm font-semibold text-foreground">AI Agent Lab</p>
+            <p className="truncate text-xs text-secondary">Tool-using AI workshop</p>
+          </div>
         </div>
-        <p className="mt-5 text-sm font-medium text-slate-400">AI Demo Day 1 · Building with LLMs and AI Agents</p>
-        <h1 className="mt-2 text-4xl font-semibold tracking-[-0.04em] text-white sm:text-5xl lg:text-6xl">
-          AI Agent Lab
-        </h1>
-        <p className="mt-4 text-lg font-medium text-slate-200 sm:text-xl">Start with an LLM. Turn it into an AI agent.</p>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
-          Build progressively with language models, tools, agent loops, and retrieval.
-        </p>
-      </div>
-      <div className="flex w-fit items-center gap-3 rounded-2xl border border-white/[0.09] bg-slate-900/70 px-4 py-3 shadow-lg shadow-black/10">
-        <span className="grid h-10 w-10 place-items-center rounded-xl bg-amber-400/10 text-amber-300" aria-hidden="true">◌</span>
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">LLM connection</p>
-          <p className="mt-0.5 text-sm font-semibold text-emerald-300">Connected</p>
+        <div className="flex shrink-0 items-center gap-2.5 rounded-xl border border-line bg-surface px-3 py-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+          <div className="leading-tight">
+            <p className="text-[11px] font-medium text-secondary">Checkpoint 5</p>
+            <p className="text-xs font-semibold text-foreground">Knowledge</p>
+          </div>
         </div>
       </div>
     </header>
